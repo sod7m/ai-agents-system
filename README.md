@@ -31,6 +31,7 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 LLAMA_BASE_URL=http://127.0.0.1:8081/v1
 LLAMA_MODEL=ornith-1.0-9b-Q4_K_M.gguf
 DEFAULT_WORKSPACE=E:\ai-agents-system
+WRITE_MODE=bypass
 ```
 
 ## Run

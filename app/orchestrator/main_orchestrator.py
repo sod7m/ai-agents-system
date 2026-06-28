@@ -10,6 +10,7 @@ from app.orchestrator.task_state import TaskStatus
 from app.router.conversation_router import ConversationRouter
 from app.router.intents import IntentResult
 from app.storage.task_repository import TaskRepository
+from app.tools.file_tools import create_directory
 
 SendMessage = Callable[[str], Awaitable[None]]
 
@@ -38,6 +39,9 @@ class MainOrchestrator:
 
         handlers = {
             "new_task": self._handle_new_task,
+            "capability_request": self._handle_capability_request,
+            "create_directory": self._handle_create_directory,
+            "general_question": self._handle_general_question,
             "status_request": self._handle_status,
             "task_clarification": self._handle_clarification,
             "show_diff": self._handle_show_diff,
@@ -48,6 +52,82 @@ class MainOrchestrator:
         }
         handler = handlers.get(intent.name, self._handle_general_chat)
         await handler(chat_id, user_id, user_message, intent, send)
+
+    async def _handle_capability_request(
+        self,
+        chat_id: int,
+        user_id: int | None,
+        user_message: str,
+        intent: IntentResult,
+        send: SendMessage,
+    ) -> None:
+        if intent.extracted_task == "create_directory":
+            if self._writes_enabled():
+                await send("Так, можу створювати папки всередині активного workspace. Напиши, наприклад: `Створи папку TEST`.")
+            else:
+                await send("Поки ні: `WRITE_MODE` зараз не дозволяє запис. Увімкни `WRITE_MODE=bypass`, перезапусти bot, і тоді я зможу створювати папки всередині workspace.")
+            return
+
+        await send("Можу відповідати на задачі, статус, звернення до PM/Coder/QA і працювати з workspace.")
+
+    async def _handle_create_directory(
+        self,
+        chat_id: int,
+        user_id: int | None,
+        user_message: str,
+        intent: IntentResult,
+        send: SendMessage,
+    ) -> None:
+        if not intent.target_path:
+            await send("Напиши назву папки, наприклад: `Створи папку TEST`.")
+            return
+
+        if not self._writes_enabled():
+            await send("Не створюю папку, бо запис зараз вимкнений. Постав `WRITE_MODE=bypass` у `.env` і перезапусти bot.")
+            return
+
+        workspace = self.tasks.get_workspace(chat_id)
+        try:
+            target = create_directory(intent.target_path, workspace)
+        except ValueError:
+            await send("Заблокував створення папки, бо шлях виходить за межі активного workspace.")
+            return
+        except OSError as exc:
+            await send(f"Не зміг створити папку: {exc}")
+            return
+
+        await send(f"Готово, папку створено: `{target}`")
+
+    async def _handle_general_question(
+        self,
+        chat_id: int,
+        user_id: int | None,
+        user_message: str,
+        intent: IntentResult,
+        send: SendMessage,
+    ) -> None:
+        task = self.tasks.get_active(chat_id)
+        workspace = self.tasks.get_workspace(chat_id)
+        task_context = task.context_for_final_pm() if task else "Активної задачі немає."
+        response = await self.agents.pm.run(
+            f"""Користувач поставив питання, це НЕ нова задача.
+Не запускай workflow і не кажи, що береш у роботу.
+Відповідай як PM/координатор системи: прямо, коротко, по-людськи.
+
+Питання користувача:
+{user_message}
+
+Активний workspace:
+{workspace}
+
+Поточний режим запису:
+{self.tasks.write_mode}
+
+Поточний контекст задачі:
+{task_context}
+"""
+        )
+        await send(response)
 
     async def _handle_new_task(
         self,
@@ -252,7 +332,21 @@ Current task context:
         intent: IntentResult,
         send: SendMessage,
     ) -> None:
-        await send("Я готовий. Напиши задачу природною мовою, наприклад: `Зроби сторінку логіну на React і Tailwind`.")
+        response = await self.agents.pm.run(
+            f"""Користувач написав звичайне повідомлення, це не класифіковано як задача.
+Відповідай як PM/координатор системи. Якщо це схоже на намір, попроси коротке уточнення.
+
+Повідомлення:
+{user_message}
+
+Активний workspace:
+{self.tasks.get_workspace(chat_id)}
+
+Поточний режим запису:
+{self.tasks.write_mode}
+"""
+        )
+        await send(response)
 
     @staticmethod
     def _qa_passed(qa_result: str) -> bool:
@@ -270,3 +364,6 @@ Current task context:
             "Команда підготувала тільки план і логічну QA-перевірку.\n\n"
             f"{final_pm_result}"
         )
+
+    def _writes_enabled(self) -> bool:
+        return self.tasks.write_mode.lower() in {"bypass", "write", "write_enabled"}

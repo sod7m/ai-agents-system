@@ -23,6 +23,7 @@ class ToolRegistry:
             "list_files": ToolSpec("list_files", ToolRisk.SAFE, True),
             "read_file": ToolSpec("read_file", ToolRisk.SAFE, True),
             "project_summary": ToolSpec("project_summary", ToolRisk.SAFE, True),
+            "create_directory": ToolSpec("create_directory", ToolRisk.SAFE, True),
             "write_file": ToolSpec("write_file", ToolRisk.SAFE, False),
             "patch_file": ToolSpec("patch_file", ToolRisk.SAFE, False),
             "run_command": ToolSpec("run_command", ToolRisk.SAFE, False),
@@ -35,4 +36,3 @@ class ToolRegistry:
 
     def enabled_tools(self) -> list[ToolSpec]:
         return [tool for tool in self._tools.values() if tool.enabled]
-
