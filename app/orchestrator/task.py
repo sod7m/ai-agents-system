@@ -78,8 +78,18 @@ Project context:
 Constraints:
 {self._format_list(self.constraints)}
 
+Previous coder attempts:
+{self._format_list(self.coder_results)}
+
+Previous tool results:
+{self._format_list(self.tool_results)}
+
+Previous QA feedback:
+{self._format_list(self.qa_results)}
+
 Mode:
 {self.write_mode}. If mode allows writes, return structured JSON actions. Do not claim actions were applied; Tool Layer applies them after your response.
+If previous QA feedback says "no structured actions returned", your next response must be valid JSON with actions.
 """
 
     def context_for_qa(self) -> str:
