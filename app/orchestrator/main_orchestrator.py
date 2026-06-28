@@ -41,6 +41,7 @@ class MainOrchestrator:
             "status_request": self._handle_status,
             "task_clarification": self._handle_clarification,
             "show_diff": self._handle_show_diff,
+            "path_request": self._handle_path_request,
             "cancel_task": self._handle_cancel,
             "workspace_change": self._handle_workspace_change,
             "direct_agent_message": self._handle_direct_agent_message,
@@ -110,7 +111,8 @@ class MainOrchestrator:
         task.set_status(TaskStatus.FINAL_SUMMARY)
         self.tasks.save(task)
 
-        task.final_summary = await self.agents.final_pm.run(task.context_for_final_pm())
+        final_pm_result = await self.agents.final_pm.run(task.context_for_final_pm())
+        task.final_summary = self._guard_final_summary(task, final_pm_result)
         self.tasks.write_text(task, "final_summary.md", task.final_summary)
         task.set_status(TaskStatus.COMPLETED)
         self.tasks.save(task)
@@ -157,6 +159,29 @@ class MainOrchestrator:
         send: SendMessage,
     ) -> None:
         await send("У поточному MVP файлова зміна ще вимкнена, тому diff поки немає. Наступний етап - read-only workspace, потім patch/write tools.")
+
+    async def _handle_path_request(
+        self,
+        chat_id: int,
+        user_id: int | None,
+        user_message: str,
+        intent: IntentResult,
+        send: SendMessage,
+    ) -> None:
+        task = self.tasks.get_active(chat_id)
+        workspace = self.tasks.get_workspace(chat_id)
+
+        if self.tasks.write_mode == "read_only":
+            log_line = f"\nЛоги останньої задачі: `logs/{task.id}`" if task else ""
+            await send(
+                "Папка або файли для цієї задачі не створювались. "
+                "Поточний MVP працює в read-only/text-only режимі: агенти підготували план і перевірили його логічно, але Tool Layer ще не застосовує зміни.\n\n"
+                f"Активний workspace: `{workspace}`"
+                f"{log_line}"
+            )
+            return
+
+        await send(f"Активний workspace: `{workspace}`")
 
     async def _handle_cancel(
         self,
@@ -234,3 +259,14 @@ Current task context:
         first_line = qa_result.strip().splitlines()[0].upper() if qa_result.strip() else ""
         return "PASS" in first_line and "FAIL" not in first_line
 
+    @staticmethod
+    def _guard_final_summary(task: Task, final_pm_result: str) -> str:
+        if task.write_mode != "read_only":
+            return final_pm_result
+
+        return (
+            "Важливо: у поточному MVP система працює в read-only/text-only режимі. "
+            "Файли не створювались, папка TEST не створювалась, build/test не запускались. "
+            "Команда підготувала тільки план і логічну QA-перевірку.\n\n"
+            f"{final_pm_result}"
+        )

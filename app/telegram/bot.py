@@ -29,6 +29,7 @@ def build_orchestrator() -> tuple[MainOrchestrator, int]:
         default_workspace=settings.default_workspace,
         max_rounds=settings.max_agent_rounds,
         approval_mode=settings.approval_mode,
+        write_mode=settings.write_mode,
     )
     orchestrator = MainOrchestrator(router=router, agents=agents, task_repository=tasks)
     return orchestrator, settings.max_telegram_message_length
@@ -106,4 +107,3 @@ async def main() -> None:
 
 def run_bot() -> None:
     asyncio.run(main())
-

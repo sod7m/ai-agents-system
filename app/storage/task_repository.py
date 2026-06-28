@@ -10,11 +10,19 @@ from app.orchestrator.task_state import TaskStatus
 
 
 class TaskRepository:
-    def __init__(self, logs_dir: Path, default_workspace: Path, max_rounds: int, approval_mode: str) -> None:
+    def __init__(
+        self,
+        logs_dir: Path,
+        default_workspace: Path,
+        max_rounds: int,
+        approval_mode: str,
+        write_mode: str = "read_only",
+    ) -> None:
         self.logs_dir = logs_dir
         self.default_workspace = default_workspace
         self.max_rounds = max_rounds
         self.approval_mode = approval_mode
+        self.write_mode = write_mode
         self._active_by_chat: dict[int, Task] = {}
         self._workspace_by_chat: dict[int, Path] = {}
         self.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -37,6 +45,7 @@ class TaskRepository:
             normalized_task=task_text,
             max_rounds=self.max_rounds,
             approval_mode=self.approval_mode,
+            write_mode=self.write_mode,
         )
         self._active_by_chat[chat_id] = task
         self.save(task, "task.json")
@@ -71,4 +80,3 @@ class TaskRepository:
     @staticmethod
     def _safe_filename(value: str) -> str:
         return re.sub(r"[^A-Za-z0-9_.-]", "_", value)
-

@@ -23,6 +23,7 @@ class Task:
     round: int = 0
     max_rounds: int = 3
     approval_mode: str = "bypass"
+    write_mode: str = "read_only"
     constraints: list[str] = field(default_factory=list)
     pm_plan: str = ""
     coder_results: list[str] = field(default_factory=list)
@@ -48,6 +49,9 @@ class Task:
 Workspace:
 {self.workspace}
 
+Runtime mode:
+{self.write_mode}
+
 Constraints:
 {self._format_list(self.constraints)}
 """
@@ -66,7 +70,7 @@ Constraints:
 {self._format_list(self.constraints)}
 
 Mode:
-MVP text-only/read-only. Do not claim files were changed.
+{self.write_mode}. If this is read_only, do not claim files were created, edited, or tested.
 """
 
     def context_for_qa(self) -> str:
@@ -83,7 +87,11 @@ Coder result:
 Constraints:
 {self._format_list(self.constraints)}
 
+Runtime mode:
+{self.write_mode}
+
 Check whether the coder result is good enough for this MVP stage.
+If runtime mode is read_only, FAIL any claim that files were actually created or changed.
 """
 
     def context_for_final_pm(self) -> str:
@@ -101,6 +109,12 @@ QA results:
 
 Final status:
 {self.status.value}
+
+Runtime mode:
+{self.write_mode}
+
+Hard fact:
+If runtime mode is read_only, no project files were created, edited, tested, or built by the system.
 """
 
     @staticmethod
@@ -108,4 +122,3 @@ Final status:
         if not items:
             return "- none"
         return "\n".join(f"- {item}" for item in items)
-

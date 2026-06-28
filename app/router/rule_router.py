@@ -43,6 +43,12 @@ class RuleRouter:
         ):
             return IntentResult("show_diff", 0.9, message, references_active_task=True)
 
+        if self._contains_any(
+            lowered,
+            ("дай посилання", "дай шлях", "де папка", "де файл", "покажи папку", "посилання на цю папку", "папку test"),
+        ):
+            return IntentResult("path_request", 0.9, message, references_active_task=True)
+
         if self._contains_any(lowered, ("стоп", "скасуй", "зупини", "не продовжуй")):
             return IntentResult("cancel_task", 0.9, message, references_active_task=True)
 
@@ -108,4 +114,3 @@ class RuleRouter:
             return "pm", text
 
         return None
-
