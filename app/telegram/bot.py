@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import defaultdict
+from dataclasses import dataclass
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
@@ -19,6 +21,67 @@ from app.utils.logger import configure_logging
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class QueuedMessage:
+    chat_id: int
+    user_id: int | None
+    text: str
+
+
+class BackgroundTaskQueue:
+    def __init__(self, orchestrator: MainOrchestrator, bot: Bot, message_limit: int) -> None:
+        self.orchestrator = orchestrator
+        self.bot = bot
+        self.message_limit = message_limit
+        self.queue: asyncio.Queue[QueuedMessage] = asyncio.Queue()
+        self.pending_by_chat: dict[int, int] = defaultdict(int)
+        self.running_by_chat: set[int] = set()
+
+    def start(self) -> asyncio.Task:
+        return asyncio.create_task(self._worker(), name="ai-team-runtime-worker")
+
+    async def enqueue(self, item: QueuedMessage) -> int:
+        self.pending_by_chat[item.chat_id] += 1
+        await self.queue.put(item)
+        return self.pending_by_chat[item.chat_id]
+
+    def status_for_chat(self, chat_id: int) -> str | None:
+        pending = self.pending_by_chat.get(chat_id, 0)
+        running = chat_id in self.running_by_chat
+        if not pending and not running:
+            return None
+
+        parts = []
+        if running:
+            parts.append("є задача в роботі")
+        if pending:
+            parts.append(f"у черзі: {pending}")
+        return ", ".join(parts)
+
+    async def _worker(self) -> None:
+        while True:
+            item = await self.queue.get()
+            self.pending_by_chat[item.chat_id] = max(0, self.pending_by_chat[item.chat_id] - 1)
+            self.running_by_chat.add(item.chat_id)
+
+            async def send(text: str) -> None:
+                await _send_chat_chunks(self.bot, item.chat_id, text, self.message_limit)
+
+            try:
+                await self.orchestrator.handle_message(
+                    chat_id=item.chat_id,
+                    user_id=item.user_id,
+                    user_message=item.text,
+                    send=send,
+                )
+            except Exception:
+                logger.exception("Background task failed")
+                await send("Задача впала з неочікуваною помилкою. Деталі є в логах.")
+            finally:
+                self.running_by_chat.discard(item.chat_id)
+                self.queue.task_done()
+
+
 def build_orchestrator() -> tuple[MainOrchestrator, int]:
     settings = load_settings()
     llm = LlamaCppProvider(settings.llama_base_url, settings.llama_model)
@@ -31,6 +94,7 @@ def build_orchestrator() -> tuple[MainOrchestrator, int]:
         approval_mode=settings.approval_mode,
         write_mode=settings.write_mode,
         max_command_timeout_seconds=settings.max_command_timeout_seconds,
+        db_path=settings.db_path,
     )
     orchestrator = MainOrchestrator(router=router, agents=agents, task_repository=tasks)
     return orchestrator, settings.max_telegram_message_length
@@ -39,6 +103,11 @@ def build_orchestrator() -> tuple[MainOrchestrator, int]:
 async def _send_chunks(message: Message, text: str, limit: int) -> None:
     for part in split_telegram_message(text, limit):
         await message.answer(part)
+
+
+async def _send_chat_chunks(bot: Bot, chat_id: int, text: str, limit: int) -> None:
+    for part in split_telegram_message(text, limit):
+        await bot.send_message(chat_id=chat_id, text=part)
 
 
 async def main() -> None:
@@ -51,6 +120,8 @@ async def main() -> None:
     bot = Bot(token=settings.telegram_bot_token)
     dp = Dispatcher()
     orchestrator, message_limit = build_orchestrator()
+    task_queue = BackgroundTaskQueue(orchestrator, bot, message_limit)
+    worker_task = task_queue.start()
 
     @dp.message(Command("start"))
     async def start(message: Message) -> None:
@@ -67,17 +138,43 @@ async def main() -> None:
             "- Зроби сторінку логіну на React і Tailwind\n"
             "- Як там?\n"
             "- QA, перевір чи нормальний план\n"
-            "- Стоп"
+            "- Стоп\n"
+            "- Покажи зміни\n"
+            "- /tasks"
         )
 
     @dp.message(Command("status"))
     async def status(message: Message) -> None:
+        queue_status = task_queue.status_for_chat(message.chat.id)
+        if queue_status:
+            await message.answer(f"Черга: {queue_status}")
         await orchestrator.handle_message(
             chat_id=message.chat.id,
             user_id=message.from_user.id if message.from_user else None,
             user_message="статус",
             send=lambda text: _send_chunks(message, text, message_limit),
         )
+
+    @dp.message(Command("diff"))
+    async def diff(message: Message) -> None:
+        await orchestrator.handle_message(
+            chat_id=message.chat.id,
+            user_id=message.from_user.id if message.from_user else None,
+            user_message="покажи зміни",
+            send=lambda text: _send_chunks(message, text, message_limit),
+        )
+
+    @dp.message(Command("tasks"))
+    async def tasks(message: Message) -> None:
+        recent = orchestrator.tasks.list_recent(message.chat.id, limit=5)
+        if not recent:
+            await message.answer("Задач ще немає.")
+            return
+
+        lines = ["Останні задачі:"]
+        for task in recent:
+            lines.append(f"- `{task.id}`: {task.status.value}, раунд {task.round}/{task.max_rounds}")
+        await message.answer("\n".join(lines))
 
     @dp.message(Command("workspace"))
     async def workspace(message: Message, command: CommandObject) -> None:
@@ -95,15 +192,31 @@ async def main() -> None:
     @dp.message(F.text)
     async def text_message(message: Message) -> None:
         assert message.text is not None
-        await orchestrator.handle_message(
+        intent = await orchestrator.detect_intent(message.text, message.chat.id)
+        if intent.name == "new_task":
+            pending = await task_queue.enqueue(
+                QueuedMessage(
+                    chat_id=message.chat.id,
+                    user_id=message.from_user.id if message.from_user else None,
+                    text=message.text,
+                )
+            )
+            await message.answer(f"Поставив задачу в чергу. Позиція в черзі: {pending}.")
+            return
+
+        await orchestrator.handle_intent(
             chat_id=message.chat.id,
             user_id=message.from_user.id if message.from_user else None,
             user_message=message.text,
+            intent=intent,
             send=lambda text: _send_chunks(message, text, message_limit),
         )
 
     logger.info("Starting Telegram polling")
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        worker_task.cancel()
 
 
 def run_bot() -> None:

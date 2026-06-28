@@ -21,6 +21,7 @@ class Settings:
     router_mode: str
     write_mode: str
     logs_dir: Path
+    db_path: Path
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -57,4 +58,5 @@ def load_settings() -> Settings:
         router_mode=os.getenv("ROUTER_MODE", "hybrid").strip(),
         write_mode=os.getenv("WRITE_MODE", "read_only").strip(),
         logs_dir=root_dir / "logs",
+        db_path=root_dir / "runtime.sqlite3",
     )

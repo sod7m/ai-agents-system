@@ -45,6 +45,13 @@ class Task:
         data["status"] = self.status.value
         return data
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "Task":
+        payload = dict(data)
+        payload["workspace"] = Path(payload["workspace"])
+        payload["status"] = TaskStatus(payload.get("status", TaskStatus.TASK_CREATED.value))
+        return cls(**payload)
+
     def context_for_pm(self) -> str:
         return f"""User task:
 {self.raw_user_message}

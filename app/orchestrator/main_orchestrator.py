@@ -38,8 +38,20 @@ class MainOrchestrator:
         user_message: str,
         send: SendMessage,
     ) -> None:
-        intent = await self.router.detect(user_message, chat_id=chat_id)
+        intent = await self.detect_intent(user_message, chat_id)
+        await self.handle_intent(chat_id, user_id, user_message, intent, send)
 
+    async def detect_intent(self, user_message: str, chat_id: int | None = None) -> IntentResult:
+        return await self.router.detect(user_message, chat_id=chat_id)
+
+    async def handle_intent(
+        self,
+        chat_id: int,
+        user_id: int | None,
+        user_message: str,
+        intent: IntentResult,
+        send: SendMessage,
+    ) -> None:
         handlers = {
             "new_task": self._handle_new_task,
             "capability_request": self._handle_capability_request,
@@ -159,9 +171,11 @@ class MainOrchestrator:
     async def _run_task(self, task: Task, send: SendMessage) -> None:
         task.set_status(TaskStatus.PM_PLANNING)
         self.tasks.save(task)
+        self.tasks.add_event(task, "status", task.status.value)
 
         task.pm_plan = await self.agents.pm.run(task.context_for_pm())
         self.tasks.write_text(task, "pm_plan.md", task.pm_plan)
+        self.tasks.add_event(task, "pm_plan", task.pm_plan)
         self.tasks.save(task)
         await send("PM склав план. Передаю Coder.")
 
@@ -169,10 +183,12 @@ class MainOrchestrator:
             task.round = round_number
             task.set_status(TaskStatus.CODING)
             self.tasks.save(task)
+            self.tasks.add_event(task, "status", f"{task.status.value}:{round_number}")
 
             coder_result = await self.agents.coder.run(task.context_for_coder())
             task.coder_results.append(coder_result)
             self.tasks.write_text(task, f"coder_round_{round_number}.md", coder_result)
+            self.tasks.add_event(task, "coder_result", coder_result)
             self.tasks.save(task)
 
             actions = parse_actions(coder_result)
@@ -187,6 +203,7 @@ class MainOrchestrator:
                 task.tool_results.append(formatted_results)
                 task.changed_files.extend(changed_paths(tool_results))
                 self.tasks.write_text(task, f"tool_results_round_{round_number}.md", formatted_results)
+                self.tasks.add_event(task, "tool_results", formatted_results)
                 self.tasks.save(task)
 
                 if any(result.ok for result in tool_results):
@@ -196,23 +213,30 @@ class MainOrchestrator:
             else:
                 task.tool_results.append("- no structured actions returned")
                 self.tasks.write_text(task, f"tool_results_round_{round_number}.md", "- no structured actions returned")
+                self.tasks.add_event(task, "tool_results", "- no structured actions returned")
                 self.tasks.save(task)
                 await send("Coder підготував відповідь без structured actions. Передаю QA.")
 
             task.set_status(TaskStatus.QA_CHECKING)
             self.tasks.save(task)
+            self.tasks.add_event(task, "status", task.status.value)
 
             qa_result = await self.agents.qa.run(task.context_for_qa())
             task.qa_results.append(qa_result)
             self.tasks.write_text(task, f"qa_round_{round_number}.md", qa_result)
+            self.tasks.add_event(task, "qa_result", qa_result)
             self.tasks.save(task)
 
             if self._qa_passed(qa_result):
                 task.set_status(TaskStatus.QA_PASSED)
+                self.tasks.save(task)
+                self.tasks.add_event(task, "status", task.status.value)
                 await send("QA дав PASS. Готую фінальний підсумок.")
                 break
 
             task.set_status(TaskStatus.QA_FAILED)
+            self.tasks.save(task)
+            self.tasks.add_event(task, "status", task.status.value)
             await send("QA знайшов проблему. Повертаю Coder на ще один раунд.")
         else:
             await send("QA не дав PASS за максимальну кількість раундів. Підсумую поточний стан.")
@@ -225,6 +249,7 @@ class MainOrchestrator:
         self.tasks.write_text(task, "final_summary.md", task.final_summary)
         task.set_status(TaskStatus.COMPLETED)
         self.tasks.save(task)
+        self.tasks.add_event(task, "final_summary", task.final_summary)
         await send(task.final_summary)
 
     async def _handle_status(

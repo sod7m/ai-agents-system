@@ -2,7 +2,7 @@
 
 Локальна multi-agent система для Telegram: один Telegram bot як вхід у систему, а всередині центральний runtime з PM, Coder, QA і Final PM агентами.
 
-Поточний стан: робочий MVP. Архітектура вже повна для базового локального dev workflow: агенти можуть створювати папки/файли в workspace, запускати safe allowlist-команди і показувати git status/diff.
+Поточний стан: робочий MVP. Архітектура вже повна для базового локального dev workflow: агенти можуть створювати папки/файли в workspace, запускати safe allowlist-команди, показувати git status/diff і зберігати стан у SQLite.
 
 ```text
 Telegram Bot
@@ -14,6 +14,8 @@ Telegram Bot
   -> Final PM Agent
   -> Telegram response
 ```
+
+Довгі задачі виконуються у background queue, тому bot може відповідати на `/status`, `/tasks`, `/diff` і звичайні питання, поки worker обробляє задачу.
 
 ## Setup
 
@@ -86,8 +88,12 @@ Coder, поясни рішення
 /start
 /help
 /status
+/tasks
+/diff
 /workspace E:\ai-agents-system
 ```
+
+`/tasks` показує останні задачі з SQLite навіть після restart bot-а.
 
 ## Logs
 
@@ -106,6 +112,20 @@ pm_plan.md
 coder_round_*.md
 qa_round_*.md
 final_summary.md
+```
+
+Операційний стан зберігається в:
+
+```text
+runtime.sqlite3
+```
+
+У БД є:
+
+```text
+workspaces
+tasks
+task_events
 ```
 
 ## Safety
@@ -132,6 +152,13 @@ package install
 видалення файлів
 робота поза workspace
 .env edits
+```
+
+## Checks
+
+```powershell
+.\.venv\Scripts\python.exe -m compileall app main.py tests
+.\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
 ## Roadmap
