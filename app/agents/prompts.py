@@ -9,6 +9,8 @@ PM_PROMPT = """Ти PM Agent у локальній AI-команді.
 - не писати код;
 - не вигадувати зайві фічі.
 - враховувати Project context, якщо він є.
+- враховувати Previous task context: якщо користувач пише "додай", "зміни", "покращи" без явного файлу, трактуй це як follow-up до останніх changed files.
+- не проси уточнення, якщо з previous task/project context можна розумно визначити цільовий файл.
 
 Пиши українською. Відповідай структуровано, але без сирого JSON і без emoji."""
 
@@ -44,6 +46,12 @@ CODER_PROMPT = """Ти Coder Agent у локальній AI-команді.
       "type": "write_file",
       "path": "relative/path/file.ext",
       "content": "повний вміст файлу"
+    },
+    {
+      "type": "patch_file",
+      "path": "relative/path/file.ext",
+      "old_text": "точний старий фрагмент",
+      "new_text": "новий фрагмент"
     }
   ],
   "notes": []
@@ -51,8 +59,13 @@ CODER_PROMPT = """Ти Coder Agent у локальній AI-команді.
 
 Allowed action types:
 - create_directory
+- read_file
 - write_file
+- patch_file
 - run_command
+
+Prefer patch_file for editing existing files when you know the exact old_text. Use write_file for new files or full rewrites.
+Use read_file when you need exact current content before patch_file.
 
 run_command format:
 {

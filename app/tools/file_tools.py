@@ -40,6 +40,25 @@ def write_file(path_text: str, content: str, workspace: Path) -> Path:
     return target
 
 
+def patch_file(path_text: str, old_text: str, new_text: str, workspace: Path) -> Path:
+    target = resolve_workspace_path(path_text, workspace)
+    if not is_inside_workspace(target, workspace):
+        raise ValueError(f"Path is outside workspace: {target}")
+
+    if target.name.lower() == ".env":
+        raise ValueError(".env edits are blocked")
+
+    content = target.read_text(encoding="utf-8")
+    occurrences = content.count(old_text)
+    if occurrences == 0:
+        raise ValueError("old_text was not found in file")
+    if occurrences > 1:
+        raise ValueError("old_text is not unique in file")
+
+    target.write_text(content.replace(old_text, new_text, 1), encoding="utf-8", newline="\n")
+    return target
+
+
 def read_text_file(path_text: str, workspace: Path, max_bytes: int = MAX_TEXT_FILE_BYTES) -> str:
     target = resolve_workspace_path(path_text, workspace)
     if not is_inside_workspace(target, workspace):

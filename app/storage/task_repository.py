@@ -54,6 +54,7 @@ class TaskRepository:
     def create(self, chat_id: int, user_id: int | None, task_text: str) -> Task:
         now = datetime.now()
         task_id = f"task_{now:%Y%m%d_%H%M%S}_{chat_id}"
+        previous_task = self.get_latest(chat_id)
         task = Task(
             id=task_id,
             chat_id=chat_id,
@@ -64,6 +65,7 @@ class TaskRepository:
             max_rounds=self.max_rounds,
             approval_mode=self.approval_mode,
             write_mode=self.write_mode,
+            previous_task_context=self._format_previous_task(previous_task),
         )
         self._active_by_chat[chat_id] = task
         self.save(task, "task.json")
@@ -97,6 +99,20 @@ class TaskRepository:
                 (chat_id, limit),
             ).fetchall()
         return [Task.from_dict(json.loads(row["data"])) for row in rows]
+
+    def list_events(self, task_id: str, limit: int = 20) -> list[sqlite3.Row]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                select kind, content, created_at
+                from task_events
+                where task_id = ?
+                order by created_at desc
+                limit ?
+                """,
+                (task_id, limit),
+            ).fetchall()
+        return list(reversed(rows))
 
     def cancel_active(self, chat_id: int) -> Task | None:
         task = self.get_active(chat_id)
@@ -209,3 +225,19 @@ class TaskRepository:
     @staticmethod
     def _safe_filename(value: str) -> str:
         return re.sub(r"[^A-Za-z0-9_.-]", "_", value)
+
+    @staticmethod
+    def _format_previous_task(task: Task | None) -> str:
+        if not task:
+            return ""
+
+        changed = "\n".join(f"- {path}" for path in task.changed_files[-10:]) or "- none"
+        summary = task.final_summary[:2000] if task.final_summary else "No final summary."
+        return f"""Previous task id: {task.id}
+Previous user request: {task.raw_user_message}
+Previous status: {task.status.value}
+Previous changed files:
+{changed}
+Previous final summary:
+{summary}
+"""

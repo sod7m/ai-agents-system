@@ -60,6 +60,7 @@ class MainOrchestrator:
             "status_request": self._handle_status,
             "task_clarification": self._handle_clarification,
             "show_diff": self._handle_show_diff,
+            "qa_history_request": self._handle_qa_history,
             "path_request": self._handle_path_request,
             "cancel_task": self._handle_cancel,
             "workspace_change": self._handle_workspace_change,
@@ -157,7 +158,7 @@ class MainOrchestrator:
         await send("Окей, беру в роботу. Спочатку PM складе план, потім Coder підготує рішення, а QA перевірить.")
 
         try:
-            task.project_context = project_summary(task.workspace)
+            task.project_context = project_summary(task.workspace, task.raw_user_message)
             self.tasks.write_text(task, "project_context.md", task.project_context)
             self.tasks.save(task)
             await self._run_task(task, send)
@@ -201,13 +202,16 @@ class MainOrchestrator:
                 )
                 formatted_results = format_tool_results(tool_results)
                 task.tool_results.append(formatted_results)
-                task.changed_files.extend(changed_paths(tool_results))
+                current_changed_paths = changed_paths(tool_results)
+                task.changed_files.extend(current_changed_paths)
                 self.tasks.write_text(task, f"tool_results_round_{round_number}.md", formatted_results)
                 self.tasks.add_event(task, "tool_results", formatted_results)
                 self.tasks.save(task)
 
-                if any(result.ok for result in tool_results):
+                if current_changed_paths:
                     await send("Coder підготував structured actions, Tool Layer застосував зміни. Передаю QA.")
+                elif any(result.ok for result in tool_results):
+                    await send("Coder підготував structured actions, Tool Layer виконав read/check actions без зміни файлів. Передаю QA.")
                 else:
                     await send("Coder підготував actions, але Tool Layer їх заблокував. Передаю QA для оцінки.")
             else:
@@ -300,6 +304,28 @@ class MainOrchestrator:
         status = git_status(workspace)
         diff = git_diff(workspace)
         await send(f"Git status:\n```text\n{status}\n```\n\nGit diff:\n```diff\n{diff}\n```")
+
+    async def _handle_qa_history(
+        self,
+        chat_id: int,
+        user_id: int | None,
+        user_message: str,
+        intent: IntentResult,
+        send: SendMessage,
+    ) -> None:
+        task = self.tasks.get_active(chat_id)
+        if not task:
+            await send("Не бачу останньої задачі для цього чату.")
+            return
+
+        if not task.qa_results:
+            await send("У цій задачі QA ще не запускався.")
+            return
+
+        lines = [f"QA history для `{task.id}`:"]
+        for index, result in enumerate(task.qa_results, start=1):
+            lines.append(f"\nРаунд {index}:\n{result[:1200]}")
+        await send("\n".join(lines))
 
     async def _handle_path_request(
         self,

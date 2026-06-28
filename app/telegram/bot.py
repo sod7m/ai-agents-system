@@ -140,7 +140,8 @@ async def main() -> None:
             "- QA, перевір чи нормальний план\n"
             "- Стоп\n"
             "- Покажи зміни\n"
-            "- /tasks"
+            "- /tasks\n"
+            "- /events"
         )
 
     @dp.message(Command("status"))
@@ -174,6 +175,26 @@ async def main() -> None:
         lines = ["Останні задачі:"]
         for task in recent:
             lines.append(f"- `{task.id}`: {task.status.value}, раунд {task.round}/{task.max_rounds}")
+        await message.answer("\n".join(lines))
+
+    @dp.message(Command("events"))
+    async def events(message: Message) -> None:
+        task = orchestrator.tasks.get_active(message.chat.id)
+        if not task:
+            await message.answer("Немає останньої задачі для цього чату.")
+            return
+
+        events = orchestrator.tasks.list_events(task.id, limit=15)
+        if not events:
+            await message.answer("Подій для останньої задачі ще немає.")
+            return
+
+        lines = [f"Останні події `{task.id}`:"]
+        for event in events:
+            content = str(event["content"]).replace("\n", " ")
+            if len(content) > 180:
+                content = content[:180] + "..."
+            lines.append(f"- {event['kind']}: {content}")
         await message.answer("\n".join(lines))
 
     @dp.message(Command("workspace"))

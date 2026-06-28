@@ -25,7 +25,7 @@ class ToolRegistry:
             "project_summary": ToolSpec("project_summary", ToolRisk.SAFE, True),
             "create_directory": ToolSpec("create_directory", ToolRisk.SAFE, True),
             "write_file": ToolSpec("write_file", ToolRisk.SAFE, False),
-            "patch_file": ToolSpec("patch_file", ToolRisk.SAFE, False),
+            "patch_file": ToolSpec("patch_file", ToolRisk.SAFE, True),
             "run_command": ToolSpec("run_command", ToolRisk.SAFE, True),
             "git_status": ToolSpec("git_status", ToolRisk.SAFE, True),
             "git_diff": ToolSpec("git_diff", ToolRisk.SAFE, True),

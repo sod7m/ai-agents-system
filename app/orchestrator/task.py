@@ -25,6 +25,7 @@ class Task:
     approval_mode: str = "bypass"
     write_mode: str = "read_only"
     constraints: list[str] = field(default_factory=list)
+    previous_task_context: str = ""
     project_context: str = ""
     pm_plan: str = ""
     coder_results: list[str] = field(default_factory=list)
@@ -62,6 +63,9 @@ Workspace:
 Runtime mode:
 {self.write_mode}
 
+Previous task context:
+{self.previous_task_context or "No previous task context."}
+
 Project context:
 {self.project_context or "Project context has not been collected yet."}
 
@@ -78,6 +82,9 @@ PM plan:
 
 Workspace:
 {self.workspace}
+
+Previous task context:
+{self.previous_task_context or "No previous task context."}
 
 Project context:
 {self.project_context or "Project context has not been collected yet."}

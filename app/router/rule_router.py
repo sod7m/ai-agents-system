@@ -57,6 +57,12 @@ class RuleRouter:
 
         if self._contains_any(
             lowered,
+            ("що відхилив qa", "чому qa", "qa fail", "qa відхилив", "що qa знайшов", "покажи qa"),
+        ):
+            return IntentResult("qa_history_request", 0.9, message, references_active_task=True)
+
+        if self._contains_any(
+            lowered,
             ("дай посилання", "дай шлях", "де папка", "де файл", "покажи папку", "посилання на цю папку", "папку test"),
         ):
             return IntentResult("path_request", 0.9, message, references_active_task=True)
@@ -81,7 +87,24 @@ class RuleRouter:
 
         if self._contains_any(
             lowered,
-            ("зроби", "створи", "додай", "реалізуй", "перероби", "виправ", "перевір", "знайди помилку", "збілди", "запусти"),
+            (
+                "зроби",
+                "створи",
+                "додай",
+                "добав",
+                "зміни",
+                "заміни",
+                "онови",
+                "покращи",
+                "відредагуй",
+                "реалізуй",
+                "перероби",
+                "виправ",
+                "перевір",
+                "знайди помилку",
+                "збілди",
+                "запусти",
+            ),
         ):
             return IntentResult(
                 name="new_task",
@@ -147,6 +170,12 @@ class RuleRouter:
             "зроби",
             "створи",
             "додай",
+            "добав",
+            "зміни",
+            "заміни",
+            "онови",
+            "покращи",
+            "відредагуй",
             "реалізуй",
             "перероби",
             "виправ",

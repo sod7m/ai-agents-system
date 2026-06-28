@@ -82,6 +82,12 @@ Coder, поясни рішення
 Як там?
 ```
 
+Можна подивитися, що саме відхиляв QA:
+
+```text
+Що відхилив QA?
+```
+
 Команди:
 
 ```text
@@ -90,6 +96,7 @@ Coder, поясни рішення
 /status
 /tasks
 /diff
+/events
 /workspace E:\ai-agents-system
 ```
 
@@ -136,7 +143,9 @@ Tool Layer працює тільки всередині активного works
 
 ```text
 create_directory
+read_file
 write_file
+patch_file
 run_command для allowlist build/test/lint/compileall команд
 git status
 git diff
@@ -160,6 +169,17 @@ package install
 .\.venv\Scripts\python.exe -m compileall app main.py tests
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
+
+## Current Product Behavior
+
+- Coder повертає structured JSON actions.
+- Actions проходять Pydantic validation.
+- Tool Layer виконує тільки дозволені actions.
+- Coder може читати релевантні файли через `read_file`, якщо потрібен точний контент.
+- Для існуючих файлів Coder може використовувати `patch_file` з exact `old_text` / `new_text`.
+- Project context включає список файлів, metadata і вміст релевантних невеликих файлів.
+- QA дивиться на фактичні Tool results.
+- Якщо QA відхиляє раунд, наступний Coder-round бачить попередній QA feedback.
 
 ## Roadmap
 
