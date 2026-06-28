@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.tools.command_tools import CommandAction, run_allowed_command
 from app.tools.file_tools import create_directory, write_file
 
 
@@ -37,7 +39,12 @@ def parse_actions(text: str) -> list[dict[str, Any]]:
     return [action for action in actions if isinstance(action, dict)]
 
 
-def execute_actions(actions: list[dict[str, Any]], workspace: Path, writes_enabled: bool) -> list[ToolExecutionResult]:
+def execute_actions(
+    actions: list[dict[str, Any]],
+    workspace: Path,
+    writes_enabled: bool,
+    command_timeout_seconds: int = 120,
+) -> list[ToolExecutionResult]:
     results: list[ToolExecutionResult] = []
 
     for action in actions:
@@ -49,6 +56,8 @@ def execute_actions(actions: list[dict[str, Any]], workspace: Path, writes_enabl
         elif action_type in {"write_file", "create_file"}:
             content = action.get("content")
             result = _execute_write_file(path, content, workspace, writes_enabled)
+        elif action_type == "run_command":
+            result = _execute_run_command(action, workspace, command_timeout_seconds)
         else:
             result = ToolExecutionResult(False, action_type or "unknown", path or None, "Unsupported action type")
 
@@ -58,7 +67,11 @@ def execute_actions(actions: list[dict[str, Any]], workspace: Path, writes_enabl
 
 
 def changed_paths(results: list[ToolExecutionResult]) -> list[str]:
-    return [result.path for result in results if result.ok and result.path]
+    return [
+        result.path
+        for result in results
+        if result.ok and result.path and result.action_type in {"create_directory", "write_file"}
+    ]
 
 
 def format_tool_results(results: list[ToolExecutionResult]) -> str:
@@ -101,6 +114,30 @@ def _execute_write_file(path: str, content: Any, workspace: Path, writes_enabled
         return ToolExecutionResult(False, "write_file", path, str(exc))
 
     return ToolExecutionResult(True, "write_file", str(target), "File written")
+
+
+def _execute_run_command(action: dict[str, Any], workspace: Path, timeout_seconds: int) -> ToolExecutionResult:
+    command = action.get("command")
+    args = action.get("args", [])
+    cwd = action.get("cwd")
+
+    if not isinstance(command, str) or not command:
+        return ToolExecutionResult(False, "run_command", None, "Missing command")
+    if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
+        return ToolExecutionResult(False, "run_command", None, "args must be a list of strings")
+    if cwd is not None and not isinstance(cwd, str):
+        return ToolExecutionResult(False, "run_command", None, "cwd must be a string")
+
+    command_action = CommandAction(command=command, args=tuple(args), cwd=cwd)
+    try:
+        returncode, output = run_allowed_command(command_action, workspace, timeout_seconds)
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        return ToolExecutionResult(False, "run_command", f"{command} {' '.join(args)}".strip(), str(exc))
+
+    status = "Command passed" if returncode == 0 else f"Command failed with exit code {returncode}"
+    if output:
+        status = f"{status}\n{output[:6000]}"
+    return ToolExecutionResult(returncode == 0, "run_command", f"{command} {' '.join(args)}".strip(), status)
 
 
 def _extract_json_payload(text: str) -> str | None:

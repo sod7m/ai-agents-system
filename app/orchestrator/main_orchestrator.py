@@ -12,6 +12,7 @@ from app.router.intents import IntentResult
 from app.storage.task_repository import TaskRepository
 from app.tools.action_executor import changed_paths, execute_actions, format_tool_results, parse_actions
 from app.tools.file_tools import create_directory
+from app.tools.git_tools import git_diff, git_status
 from app.tools.project_tools import project_summary
 
 SendMessage = Callable[[str], Awaitable[None]]
@@ -176,7 +177,12 @@ class MainOrchestrator:
 
             actions = parse_actions(coder_result)
             if actions:
-                tool_results = execute_actions(actions, task.workspace, self._writes_enabled())
+                tool_results = execute_actions(
+                    actions,
+                    task.workspace,
+                    self._writes_enabled(),
+                    command_timeout_seconds=self.tasks.max_command_timeout_seconds,
+                )
                 formatted_results = format_tool_results(tool_results)
                 task.tool_results.append(formatted_results)
                 task.changed_files.extend(changed_paths(tool_results))
@@ -234,7 +240,11 @@ class MainOrchestrator:
             await send("Активної задачі зараз немає.")
             return
 
-        await send(f"Поточний статус: {task.status.value}. Раунд: {task.round}/{task.max_rounds}.")
+        changed = "\n".join(f"- {path}" for path in task.changed_files[-20:]) or "- поки немає"
+        await send(
+            f"Поточний статус: {task.status.value}. Раунд: {task.round}/{task.max_rounds}.\n\n"
+            f"Змінені файли/шляхи:\n{changed}"
+        )
 
     async def _handle_clarification(
         self,
@@ -261,7 +271,10 @@ class MainOrchestrator:
         intent: IntentResult,
         send: SendMessage,
     ) -> None:
-        await send("У поточному MVP файлова зміна ще вимкнена, тому diff поки немає. Наступний етап - read-only workspace, потім patch/write tools.")
+        workspace = self.tasks.get_workspace(chat_id)
+        status = git_status(workspace)
+        diff = git_diff(workspace)
+        await send(f"Git status:\n```text\n{status}\n```\n\nGit diff:\n```diff\n{diff}\n```")
 
     async def _handle_path_request(
         self,
@@ -282,6 +295,11 @@ class MainOrchestrator:
                 f"Активний workspace: `{workspace}`"
                 f"{log_line}"
             )
+            return
+
+        if task and task.changed_files:
+            changed = "\n".join(f"- `{path}`" for path in task.changed_files[-20:])
+            await send(f"Активний workspace: `{workspace}`\n\nОстанні змінені шляхи:\n{changed}")
             return
 
         await send(f"Активний workspace: `{workspace}`")

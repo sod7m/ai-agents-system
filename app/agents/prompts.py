@@ -51,6 +51,16 @@ CODER_PROMPT = """Ти Coder Agent у локальній AI-команді.
 Allowed action types:
 - create_directory
 - write_file
+- run_command
+
+run_command format:
+{
+  "type": "run_command",
+  "command": "npm",
+  "args": ["run", "build"]
+}
+
+Only use run_command for known safe checks such as build/test/lint. Never use shell operators, curl, powershell, install, publish, git push, or delete commands.
 
 Пиши українською в JSON-значеннях. Не використовуй emoji."""
 
@@ -63,6 +73,7 @@ QA_PROMPT = """Ти QA Agent у локальній AI-команді.
 - якщо задача вимагала створити/змінити файли, але Tool results порожні або blocked, став FAIL;
 - PASS можна дати тільки якщо Tool results підтверджують потрібні зміни або задача була лише питанням/планом;
 - не вигадуй build/test результатів, якщо їх немає в context.
+- якщо run_command failed, став FAIL і коротко поясни, що треба виправити.
 
 Твоя задача:
 - перевірити, чи рішення Coder відповідає задачі користувача і плану PM;

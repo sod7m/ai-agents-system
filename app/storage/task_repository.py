@@ -17,12 +17,14 @@ class TaskRepository:
         max_rounds: int,
         approval_mode: str,
         write_mode: str = "read_only",
+        max_command_timeout_seconds: int = 120,
     ) -> None:
         self.logs_dir = logs_dir
         self.default_workspace = default_workspace
         self.max_rounds = max_rounds
         self.approval_mode = approval_mode
         self.write_mode = write_mode
+        self.max_command_timeout_seconds = max_command_timeout_seconds
         self._active_by_chat: dict[int, Task] = {}
         self._workspace_by_chat: dict[int, Path] = {}
         self.logs_dir.mkdir(parents=True, exist_ok=True)

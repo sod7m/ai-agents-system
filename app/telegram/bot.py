@@ -30,6 +30,7 @@ def build_orchestrator() -> tuple[MainOrchestrator, int]:
         max_rounds=settings.max_agent_rounds,
         approval_mode=settings.approval_mode,
         write_mode=settings.write_mode,
+        max_command_timeout_seconds=settings.max_command_timeout_seconds,
     )
     orchestrator = MainOrchestrator(router=router, agents=agents, task_repository=tasks)
     return orchestrator, settings.max_telegram_message_length

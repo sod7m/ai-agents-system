@@ -2,7 +2,7 @@
 
 Локальна multi-agent система для Telegram: один Telegram bot як вхід у систему, а всередині центральний runtime з PM, Coder, QA і Final PM агентами.
 
-Поточний стан: MVP 1. Архітектура вже повна, але file-edit tools поки вимкнені. Workflow працює у text-only/read-only режимі:
+Поточний стан: робочий MVP. Архітектура вже повна для базового локального dev workflow: агенти можуть створювати папки/файли в workspace, запускати safe allowlist-команди і показувати git status/diff.
 
 ```text
 Telegram Bot
@@ -60,6 +60,26 @@ QA, перевір чи нормальний план
 Coder, поясни рішення
 ```
 
+Можна виконувати прості filesystem-задачі:
+
+```text
+Створи папку TEST
+```
+
+```text
+Створи файл notes.txt з текстом hello в папці TEST
+```
+
+Можна попросити diff/status:
+
+```text
+Покажи зміни
+```
+
+```text
+Як там?
+```
+
 Команди:
 
 ```text
@@ -88,11 +108,37 @@ qa_round_*.md
 final_summary.md
 ```
 
+## Safety
+
+Tool Layer працює тільки всередині активного workspace.
+
+Дозволено автоматично:
+
+```text
+create_directory
+write_file
+run_command для allowlist build/test/lint/compileall команд
+git status
+git diff
+```
+
+Заблоковано:
+
+```text
+shell-команди сирим рядком
+git push
+npm publish
+package install
+видалення файлів
+робота поза workspace
+.env edits
+```
+
 ## Roadmap
 
 - MVP 1: один Telegram bot + повний text-only agent workflow.
 - MVP 2: read-only workspace tools.
-- MVP 3: safe patch/write tools у workspace.
-- MVP 4: QA build/test/lint loop.
+- MVP 3: safe create/write tools у workspace.
+- MVP 4: QA build/test/lint loop через allowlist `run_command`.
 - MVP 5: git diff/status.
 - Future: Telegram group mode і optional bot personas поверх одного central runtime.
