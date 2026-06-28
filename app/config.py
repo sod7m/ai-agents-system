@@ -41,7 +41,7 @@ def _int_env(name: str, default: int) -> int:
 
 
 def load_settings() -> Settings:
-    load_dotenv()
+    load_dotenv(override=True, encoding="utf-8-sig")
     root_dir = Path(__file__).resolve().parent.parent
 
     return Settings(
@@ -58,4 +58,3 @@ def load_settings() -> Settings:
         write_mode=os.getenv("WRITE_MODE", "read_only").strip(),
         logs_dir=root_dir / "logs",
     )
-
