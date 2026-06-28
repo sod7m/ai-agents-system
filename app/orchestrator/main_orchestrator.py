@@ -10,7 +10,9 @@ from app.orchestrator.task_state import TaskStatus
 from app.router.conversation_router import ConversationRouter
 from app.router.intents import IntentResult
 from app.storage.task_repository import TaskRepository
+from app.tools.action_executor import changed_paths, execute_actions, format_tool_results, parse_actions
 from app.tools.file_tools import create_directory
+from app.tools.project_tools import project_summary
 
 SendMessage = Callable[[str], Awaitable[None]]
 
@@ -142,6 +144,9 @@ class MainOrchestrator:
         await send("Окей, беру в роботу. Спочатку PM складе план, потім Coder підготує рішення, а QA перевірить.")
 
         try:
+            task.project_context = project_summary(task.workspace)
+            self.tasks.write_text(task, "project_context.md", task.project_context)
+            self.tasks.save(task)
             await self._run_task(task, send)
         except Exception as exc:
             logger.exception("Task %s failed", task.id)
@@ -168,7 +173,25 @@ class MainOrchestrator:
             task.coder_results.append(coder_result)
             self.tasks.write_text(task, f"coder_round_{round_number}.md", coder_result)
             self.tasks.save(task)
-            await send("Coder підготував рішення. Передаю QA.")
+
+            actions = parse_actions(coder_result)
+            if actions:
+                tool_results = execute_actions(actions, task.workspace, self._writes_enabled())
+                formatted_results = format_tool_results(tool_results)
+                task.tool_results.append(formatted_results)
+                task.changed_files.extend(changed_paths(tool_results))
+                self.tasks.write_text(task, f"tool_results_round_{round_number}.md", formatted_results)
+                self.tasks.save(task)
+
+                if any(result.ok for result in tool_results):
+                    await send("Coder підготував structured actions, Tool Layer застосував зміни. Передаю QA.")
+                else:
+                    await send("Coder підготував actions, але Tool Layer їх заблокував. Передаю QA для оцінки.")
+            else:
+                task.tool_results.append("- no structured actions returned")
+                self.tasks.write_text(task, f"tool_results_round_{round_number}.md", "- no structured actions returned")
+                self.tasks.save(task)
+                await send("Coder підготував відповідь без structured actions. Передаю QA.")
 
             task.set_status(TaskStatus.QA_CHECKING)
             self.tasks.save(task)

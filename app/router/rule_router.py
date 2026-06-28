@@ -117,9 +117,10 @@ class RuleRouter:
     @staticmethod
     def _extract_directory_to_create(text: str) -> str | None:
         lowered = text.lower()
-        if not re.search(r"(створи|зроби|додай|create|make)", lowered):
-            return None
-        if not re.search(r"(папк|директор|folder|directory)", lowered):
+        if not re.match(r"^\s*(створи|додай|create|make)\s+(папку|папка|директорію|директор|folder|directory)\b", lowered):
+            if not re.match(r"^\s*зроби\s+(папку|папка|директорію|директор)\b", lowered):
+                return None
+        if "?" in lowered:
             return None
 
         absolute_match = re.search(r"([A-Za-z]:\\[^\n\r]+)", text)
